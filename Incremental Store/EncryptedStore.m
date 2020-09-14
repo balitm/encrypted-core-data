@@ -879,74 +879,74 @@ static const NSInteger kTableCheckVersion = 1;
         }
         
         // load metadata
-        BOOL success = [self performInTransaction:^{
-            
+        // BOOL success = [self performInTransaction:^{
+
             //make 'LIKE' case-sensitive
-            sqlite3_stmt *setPragma = [self preparedStatementForQuery:@"PRAGMA case_sensitive_like = true;"];
-            if (!setPragma || sqlite3_step(setPragma) != SQLITE_DONE || sqlite3_finalize(setPragma) != SQLITE_OK) {
-                return NO;
-            }
-            
+        sqlite3_stmt *setPragma = [self preparedStatementForQuery:@"PRAGMA case_sensitive_like = true;"];
+        if (!setPragma || sqlite3_step(setPragma) != SQLITE_DONE || sqlite3_finalize(setPragma) != SQLITE_OK) {
+            return NO;
+        }
+
 #ifdef SQLITE_DETERMINISTIC
             //enable regexp
-            sqlite3_create_function(self->database, "REGEXP", 2, SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL, (void *)dbsqliteRegExp, NULL, NULL);
-            
+        sqlite3_create_function(self->database, "REGEXP", 2, SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL, (void *)dbsqliteRegExp, NULL, NULL);
+
             //enable case insentitivity
-            sqlite3_create_function(self->database, "STRIP_CASE", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL, (void *)dbsqliteStripCase, NULL, NULL);
+        sqlite3_create_function(self->database, "STRIP_CASE", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL, (void *)dbsqliteStripCase, NULL, NULL);
 
             //enable diacritic insentitivity
-            sqlite3_create_function(self->database, "STRIP_DIACRITICS", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL, (void *)dbsqliteStripDiacritics, NULL, NULL);
+        sqlite3_create_function(self->database, "STRIP_DIACRITICS", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL, (void *)dbsqliteStripDiacritics, NULL, NULL);
 
             //enable combined case and diacritic insentitivity
-            sqlite3_create_function(self->database, "STRIP_CASE_DIACRITICS", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL, (void *)dbsqliteStripCaseDiacritics, NULL, NULL);
+        sqlite3_create_function(self->database, "STRIP_CASE_DIACRITICS", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL, (void *)dbsqliteStripCaseDiacritics, NULL, NULL);
 #else
             //enable regexp
-            sqlite3_create_function(self->database, "REGEXP", 2, SQLITE_UTF8, NULL, (void *)dbsqliteRegExp, NULL, NULL);
+        sqlite3_create_function(self->database, "REGEXP", 2, SQLITE_UTF8, NULL, (void *)dbsqliteRegExp, NULL, NULL);
 
             //enable case insentitivity
-            sqlite3_create_function(self->database, "STRIP_CASE", 1, SQLITE_UTF8, NULL, (void *)dbsqliteStripCase, NULL, NULL);
+        sqlite3_create_function(self->database, "STRIP_CASE", 1, SQLITE_UTF8, NULL, (void *)dbsqliteStripCase, NULL, NULL);
 
             //enable diacritic insentitivity
-            sqlite3_create_function(self->database, "STRIP_DIACRITICS", 1, SQLITE_UTF8, NULL, (void *)dbsqliteStripDiacritics, NULL, NULL);
-            
+        sqlite3_create_function(self->database, "STRIP_DIACRITICS", 1, SQLITE_UTF8, NULL, (void *)dbsqliteStripDiacritics, NULL, NULL);
+
             //enable combined case and diacritic insentitivity
-            sqlite3_create_function(self->database, "STRIP_CASE_DIACRITICS", 1, SQLITE_UTF8, NULL, (void *)dbsqliteStripCaseDiacritics, NULL, NULL);
+        sqlite3_create_function(self->database, "STRIP_CASE_DIACRITICS", 1, SQLITE_UTF8, NULL, (void *)dbsqliteStripCaseDiacritics, NULL, NULL);
 #endif
 
-            // ask if we have a metadata table
-            BOOL hasTable = NO;
-            if (![self hasMetadataTable:&hasTable error:error]) { return NO; }
-            
-            // load existing metadata and optionally run migrations
-            if (hasTable) {
-                
-                // load
-                NSDictionary *metadata = nil;
-                NSString *string = [NSString stringWithFormat:
-                                    @"SELECT plist FROM %@ LIMIT 1;",
-                                    EncryptedStoreMetadataTableName];
-                sqlite3_stmt *statement = [self preparedStatementForQuery:string];
-                if (statement != NULL && sqlite3_step(statement) == SQLITE_ROW) {
-                    const void *bytes = sqlite3_column_blob(statement, 0);
-                    NSUInteger length = (NSUInteger)sqlite3_column_bytes(statement, 0);
-                    NSData *data = [NSData dataWithBytes:bytes length:length];
-                    metadata = [NSKeyedUnarchiver unarchiveObjectWithData:data];
-                    [self setMetadata:metadata];
-                }
-                else {
-                    if (error) { *error = [self databaseError]; }
-                    sqlite3_finalize(statement);
-                    return NO;
-                }
+        // ask if we have a metadata table
+        BOOL hasTable = NO;
+        if (![self hasMetadataTable:&hasTable error:error]) { return NO; }
+        BOOL success = YES;
+
+        // load existing metadata and optionally run migrations
+        if (hasTable) {
+            // load
+            NSDictionary *metadata = nil;
+            NSString *string = [NSString stringWithFormat:
+                                @"SELECT plist FROM %@ LIMIT 1;",
+                                EncryptedStoreMetadataTableName];
+            sqlite3_stmt *statement = [self preparedStatementForQuery:string];
+            if (statement != NULL && sqlite3_step(statement) == SQLITE_ROW) {
+                const void *bytes = sqlite3_column_blob(statement, 0);
+                NSUInteger length = (NSUInteger)sqlite3_column_bytes(statement, 0);
+                NSData *data = [NSData dataWithBytes:bytes length:length];
+                metadata = [NSKeyedUnarchiver unarchiveObjectWithData:data];
+                [self setMetadata:metadata];
+            }
+            else {
+                if (error) { *error = [self databaseError]; }
                 sqlite3_finalize(statement);
+                return NO;
+            }
+            sqlite3_finalize(statement);
 
-                // run migrations
-                NSDictionary *options = [self options];
-                if ([[options objectForKey:NSMigratePersistentStoresAutomaticallyOption] boolValue] &&
-                    [[options objectForKey:NSInferMappingModelAutomaticallyOption] boolValue]) {
-
+            // run migrations
+            NSDictionary *options = [self options];
+            if ([[options objectForKey:NSMigratePersistentStoresAutomaticallyOption] boolValue] &&
+                [[options objectForKey:NSInferMappingModelAutomaticallyOption] boolValue]) {
+                success = [self performInTransaction:^{
                     if ([metadata[EncryptedStoreMetadataTableCheckVersionKey] integerValue] < kTableCheckVersion) {
-                        // should check for missing subentity columns and many-to-many relationship tables
+                            // should check for missing subentity columns and many-to-many relationship tables
                         if (![self checkTableForMissingColumns:metadata error:error]) {
                             return NO;
                         }
@@ -961,12 +961,12 @@ static const NSInteger kTableCheckVersion = 1;
 
                     NSManagedObjectModel *newModel = [[self persistentStoreCoordinator] managedObjectModel];
                     
-                    // check that a migration is required first:
+                        // check that a migration is required first:
                     if ([newModel isConfiguration:nil compatibleWithStoreMetadata:metadata]){
                         return YES;
                     }
                     
-                    // load the old model:
+                        // load the old model:
                     NSMutableArray *bundles = [NSMutableArray array];
                     NSBundle *bundle = self.fileManager.configuration.bundle;
                     [bundles addObject:bundle];
@@ -975,18 +975,18 @@ static const NSInteger kTableCheckVersion = 1;
                     
                     if (oldModel && newModel) {
                         
-                        // no migration is needed if the old and new models are identical:
+                            // no migration is needed if the old and new models are identical:
                         if ([[oldModel entityVersionHashesByName] isEqualToDictionary:[newModel entityVersionHashesByName]]) {
-                            // TODO: check for entity column index changes
+                                // TODO: check for entity column index changes
                             return YES;
                         }
                         
-                        // run migrations
+                            // run migrations
                         if (![self migrateFromModel:oldModel toModel:newModel error:error]) {
                             return NO;
                         }
                         
-                        // update metadata
+                            // update metadata
                         NSMutableDictionary *mutableMetadata = [metadata mutableCopy];
                         [mutableMetadata setObject:[newModel entityVersionHashesByName] forKey:NSStoreModelVersionHashesKey];
                         [self setMetadata:mutableMetadata];
@@ -1003,13 +1003,14 @@ static const NSInteger kTableCheckVersion = 1;
                         }
                         return NO;
                     }
-                }
-                
+                    return YES;
+                }];
             }
-            
-            // this is a new store
-            else {
-                // create table
+        }
+        // this is a new store
+        else {
+            success = [self performInTransaction:^{
+                    // create table
                 NSString *string = [NSString stringWithFormat:
                                     @"CREATE TABLE %@(plist);",
                                     EncryptedStoreMetadataTableName];
@@ -1019,32 +1020,30 @@ static const NSInteger kTableCheckVersion = 1;
                     if (error) { *error = [self databaseError]; }
                     return NO;
                 }
-                
-                // Create the tables for all entities
+
+                    // Create the tables for all entities
                 if (![self initializeDatabase:error]) {
                     return NO;
                 }
-                
-                // create and set metadata
+
+                    // create and set metadata
                 NSDictionary *metadata = @{
-                                           NSStoreUUIDKey : [[self class] identifierForNewStoreAtURL:[self URL]],
-                                           NSStoreTypeKey : [self type]
-                                           };
+                    NSStoreUUIDKey : [[self class] identifierForNewStoreAtURL:[self URL]],
+                    NSStoreTypeKey : [self type]
+                };
                 [self setMetadata:metadata];
                 if (![self saveMetadata]) {
                     if (error) { *error = [self databaseError]; }
                     return NO;
                 }
-            }
-            
-            // worked
-            return YES;
-            
-        }];
-        
+                return YES;
+            }];
+        }
+
         // finish up
-        if (success) { return success; }
-        
+        if (success) {
+            return YES;
+        }
     }
     
     // load failed

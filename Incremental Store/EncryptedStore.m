@@ -1159,7 +1159,7 @@ static const NSInteger kTableCheckVersion = 1;
     if ([passphrase length] > 0) {
         // Password provided, use it to key the DB
         NSData *passBytes = [passphrase dataUsingEncoding:NSUTF8StringEncoding];
-        status = sqlite3_rekey(database, passBytes.bytes, passBytes.length);
+        status = sqlite3_rekey(database, passBytes.bytes, (int)passBytes.length);
     } else {
         // No password
         status = SQLITE_OK;
@@ -1182,7 +1182,7 @@ static const NSInteger kTableCheckVersion = 1;
         // Password provided, use it to key the DB
         // Password provided, use it to key the DB
         NSData *passBytes = [passphrase dataUsingEncoding:NSUTF8StringEncoding];
-        status = sqlite3_key(database, passBytes.bytes, passBytes.length);
+        status = sqlite3_key(database, passBytes.bytes, (int)passBytes.length);
     } else {
         // No password
         status = SQLITE_OK;
@@ -2935,7 +2935,7 @@ static void dbsqliteStripCaseDiacritics(sqlite3_context *context, int argc, cons
     return nil;
 }
 
-- (BOOL)performInTransaction:(BOOL (^) ())block {
+- (BOOL)performInTransaction:(BOOL (^) (void))block {
     sqlite3_stmt *statement = NULL;
     
     // begin transaction
@@ -4002,7 +4002,6 @@ static void dbsqliteStripCaseDiacritics(sqlite3_context *context, int argc, cons
                                                   firstOrderColumn:&firstOrderColumn
                                                  secondOrderColumn:&secondOrderColumn];
 
-                    NSString *sourceIDColumn = firstColumnIsSource ? firstIDColumn : secondIDColumn;
                     NSString *destinationIDColumn = firstColumnIsSource ? secondIDColumn : firstIDColumn;
 
                     [select appendFormat:@"LEFT OUTER JOIN %@ [%@] ON [%@].[%@] = [%@].[%@]\n",
@@ -4029,7 +4028,6 @@ static void dbsqliteStripCaseDiacritics(sqlite3_context *context, int argc, cons
                                                  secondOrderColumn:&secondOrderColumn];
 
                     NSString *sourceIDColumn = firstColumnIsSource ? firstIDColumn : secondIDColumn;
-                    NSString *destinationIDColumn = firstColumnIsSource ? secondIDColumn : firstIDColumn;
 
                     [subquery appendFormat:@"WHERE %@.[%@] = [%@].[%@]",
                                              entityTableName,

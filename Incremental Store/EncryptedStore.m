@@ -930,7 +930,16 @@ static const NSInteger kTableCheckVersion = 1;
                 const void *bytes = sqlite3_column_blob(statement, 0);
                 NSUInteger length = (NSUInteger)sqlite3_column_bytes(statement, 0);
                 NSData *data = [NSData dataWithBytes:bytes length:length];
-                metadata = [NSKeyedUnarchiver unarchiveObjectWithData:data];
+                *error = nil;
+                NSSet<Class> *classes = [NSSet setWithObjects:
+                                         NSArray.class,
+                                         NSMutableDictionary.class, NSDictionary.class,
+                                         NSString.class, NSMutableString.class,
+                                         nil];
+                metadata = [NSKeyedUnarchiver unarchivedObjectOfClasses:classes fromData:data error:error];
+                if (*error != nil) {
+                    NSLog(@"error: %@", *error);
+                }
                 [self setMetadata:metadata];
             }
             else {
@@ -1073,7 +1082,11 @@ static const NSInteger kTableCheckVersion = 1;
     // save
     string = [NSString stringWithFormat:kSQL_INSERT,EncryptedStoreMetadataTableName];
     statement = [self preparedStatementForQuery:string];
-    NSData *data = [NSKeyedArchiver archivedDataWithRootObject:[self metadata]];
+    NSError *error = nil;
+    NSData *data = [NSKeyedArchiver archivedDataWithRootObject:[self metadata] requiringSecureCoding:YES error:&error];
+    if (error != nil) {
+        NSLog(@"archive error: %@", error);
+    }
     sqlite3_bind_blob(statement, 1, [data bytes], (int)[data length], SQLITE_TRANSIENT);
     sqlite3_step(statement);
     if (statement == NULL || sqlite3_finalize(statement) != SQLITE_OK) { return NO; }
@@ -1606,12 +1619,19 @@ static void dbsqliteStripCaseDiacritics(sqlite3_context *context, int argc, cons
 - (NSArray*)columnNamesForEntity:(NSEntityDescription*)entity
                      indexedOnly:(BOOL)indexedOnly
                      quotedNames:(BOOL)quotedNames {
-    
     NSMutableSet *columns = [NSMutableSet setWithCapacity:entity.properties.count];
-    
-    [[entity attributesByName] enumerateKeysAndObjectsUsingBlock:^(NSString * name, NSAttributeDescription * description, BOOL * stop) {
+
+    NSMutableSet<NSString *> *indexeds = [NSMutableSet setWithCapacity:entity.properties.count];
+    for (NSFetchIndexDescription *obj in entity.indexes) {
+        for (NSFetchIndexElementDescription *desc in obj.elements) {
+            // NSLog(@"Index: %@, elem: %@", obj.name, desc.propertyName);
+            [indexeds addObject:desc.propertyName];
+        }
+    }
+
+    [[entity attributesByName] enumerateKeysAndObjectsUsingBlock:^(NSString *name, NSAttributeDescription *description, BOOL *stop) {
         if (description.transient) return;
-        if (!indexedOnly || description.isIndexed) {
+        if (!indexedOnly || [indexeds containsObject:description.name]) {
             if (quotedNames) {
                 [columns addObject:[NSString stringWithFormat:@"'%@'", name]];
             } else {
@@ -1686,8 +1706,7 @@ static void dbsqliteStripCaseDiacritics(sqlite3_context *context, int argc, cons
         *error = [self databaseError];
         return result;
     }
-    
-    
+
     return [self createIndicesForEntity:entity error:error];
 }
 
@@ -3345,13 +3364,15 @@ static void dbsqliteStripCaseDiacritics(sqlite3_context *context, int argc, cons
             
             // optimus prime
             else if (type == NSTransformableAttributeType) {
-                NSString *name = ([(id)property valueTransformerName] ?: NSKeyedUnarchiveFromDataTransformerName);
+                // NSLog(@"property name: %@ - transformer: %@", property.name, [(id)property valueTransformerName]);
+                NSString *name = ([(id)property valueTransformerName] ?: NSSecureUnarchiveFromDataTransformerName);
                 if ([name isEqualToString:@""]) {
-                    name = NSKeyedUnarchiveFromDataTransformerName;
+                    name = NSSecureUnarchiveFromDataTransformerName;
                 }
-                const BOOL isDefaultTransformer = [name isEqualToString:NSKeyedUnarchiveFromDataTransformerName];
+                // const BOOL isDefaultTransformer = [name isEqualToString:NSSecureUnarchiveFromDataTransformerName];
                 NSValueTransformer *transformer = [NSValueTransformer valueTransformerForName:name];
-                NSData *data = isDefaultTransformer ? [transformer reverseTransformedValue:value] : [transformer transformedValue:value];
+                NSData *data = [transformer reverseTransformedValue:value];
+                // NSData *data = isDefaultTransformer ? [transformer reverseTransformedValue:value] : [transformer transformedValue:value];
                 sqlite3_bind_blob(statement, index, [data bytes], (int)[data length], SQLITE_TRANSIENT);
             }
             
@@ -3424,17 +3445,18 @@ static void dbsqliteStripCaseDiacritics(sqlite3_context *context, int argc, cons
         
         // transformable
         else if (type == NSTransformableAttributeType) {
-            NSString *name = ([(id)property valueTransformerName] ?: NSKeyedUnarchiveFromDataTransformerName);
+            NSString *name = ([(id)property valueTransformerName] ?: NSSecureUnarchiveFromDataTransformerName);
             if ([name isEqualToString:@""]) {
-                name = NSKeyedUnarchiveFromDataTransformerName;
+                name = NSSecureUnarchiveFromDataTransformerName;
             }
             NSValueTransformer *transformer = [NSValueTransformer valueTransformerForName:name];
             const void *bytes = sqlite3_column_blob(statement, index);
             NSUInteger length = (NSUInteger)sqlite3_column_bytes(statement, index);
             if (length > 0) {
-                const BOOL isDefaultTransformer = [name isEqualToString:NSKeyedUnarchiveFromDataTransformerName];
+                // const BOOL isDefaultTransformer = [name isEqualToString:NSSecureUnarchiveFromDataTransformerName];
                 NSData *data = [NSData dataWithBytes:bytes length:length];
-                return isDefaultTransformer ? [transformer transformedValue:data] : [transformer reverseTransformedValue:data];
+                // return isDefaultTransformer ? [transformer transformedValue:data] : [transformer reverseTransformedValue:data];
+                return [transformer transformedValue:data];
             }
         }
         

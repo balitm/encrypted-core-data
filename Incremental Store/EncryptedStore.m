@@ -437,7 +437,6 @@ static const NSInteger kTableCheckVersion = 1;
                error:(NSError **)error {
     
     if ([request requestType] == NSFetchRequestType) {
-        
         // prepare values
         NSFetchRequest *fetchRequest = (id)request;
         NSEntityDescription *entity = [fetchRequest entity];
@@ -3349,8 +3348,9 @@ static void dbsqliteStripCaseDiacritics(sqlite3_context *context, int argc, cons
                 if ([name isEqualToString:@""]) {
                     name = NSKeyedUnarchiveFromDataTransformerName;
                 }
-                const BOOL isDefaultTransformer = [name isEqualToString:NSKeyedUnarchiveFromDataTransformerName];
                 NSValueTransformer *transformer = [NSValueTransformer valueTransformerForName:name];
+                const BOOL isDefaultTransformer = [transformer.class respondsToSelector:@selector(allowedTopLevelClasses)]
+                || [name isEqualToString:NSKeyedUnarchiveFromDataTransformerName];
                 NSData *data = isDefaultTransformer ? [transformer reverseTransformedValue:value] : [transformer transformedValue:value];
                 sqlite3_bind_blob(statement, index, [data bytes], (int)[data length], SQLITE_TRANSIENT);
             }
@@ -3377,12 +3377,10 @@ static void dbsqliteStripCaseDiacritics(sqlite3_context *context, int argc, cons
 - (id)valueForProperty:(NSPropertyDescription *)property
            inStatement:(sqlite3_statement *)theStatement
                atIndex:(int)index
-                withEntity:(NSEntityDescription *)theEntity{
-    
+                withEntity:(NSEntityDescription *)theEntity {
     sqlite3_stmt *statement = (sqlite3_stmt *)theStatement;
-    
-    if (sqlite3_column_type(statement, index) == SQLITE_NULL) { return nil; }
-    
+    if (sqlite3_column_type(statement, index) == SQLITE_NULL) return nil;
+
     if ([property isKindOfClass:[NSAttributeDescription class]]) {
         NSAttributeType type = [(id)property attributeType];
         
@@ -3429,11 +3427,14 @@ static void dbsqliteStripCaseDiacritics(sqlite3_context *context, int argc, cons
                 name = NSKeyedUnarchiveFromDataTransformerName;
             }
             NSValueTransformer *transformer = [NSValueTransformer valueTransformerForName:name];
+            assert([transformer isKindOfClass:[NSValueTransformer class]]);
             const void *bytes = sqlite3_column_blob(statement, index);
             NSUInteger length = (NSUInteger)sqlite3_column_bytes(statement, index);
             if (length > 0) {
-                const BOOL isDefaultTransformer = [name isEqualToString:NSKeyedUnarchiveFromDataTransformerName];
+                // NSLog(@"name: %@, default: %@", name, NSKeyedUnarchiveFromDataTransformerName);
                 NSData *data = [NSData dataWithBytes:bytes length:length];
+                const BOOL isDefaultTransformer = [transformer.class respondsToSelector:@selector(allowedTopLevelClasses)]
+                || [name isEqualToString:NSKeyedUnarchiveFromDataTransformerName];
                 return isDefaultTransformer ? [transformer transformedValue:data] : [transformer reverseTransformedValue:data];
             }
         }
@@ -4338,8 +4339,8 @@ static void dbsqliteStripCaseDiacritics(sqlite3_context *context, int argc, cons
 
 -(long)typeHash
 {
-    long hash = (long)self.name.hash;
-    return hash;
+    // Use only the lower 32 bits for 32 bit OS compatibility.
+    return (long)(self.name.hash & 0xffffffff);
 }
 
 -(NSArray *)typeHashSubhierarchy
